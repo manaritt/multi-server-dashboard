@@ -1,114 +1,99 @@
 import streamlit as st
+import time
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
-import numpy as np
-import time
-from datetime import datetime
+from agent import generate_server_metrics, trigger_auto_healing
 
+# 1. إعدادات الصفحة
 st.set_page_config(
-    page_title="Enterprise Multi-Server Monitor",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    page_title="Multi-Server Infrastructure Dashboard",
+    page_icon="🖥️",
+    layout="wide"
 )
 
-st.title("🖥️ نظام مراقبة خوادم الشركة (Multi-Server Cloud Monitor)")
-st.markdown("لوحة قيادة مركزية لمراقبة الأداء والاستجابة لعدة سيرفرات في وقت واحد")
+st.title("🖥️ Enterprise Multi-Server Monitoring Dashboard")
+st.markdown("نظام مراقبة تجميعي لعدة خوادم مع خاصية التحديث التلقائي والتعافي الذاتي.")
 
+# 2. القائمة الجانبية - التحكم بالزمن وإصلاح الأعطال
+st.sidebar.header("⚙️ إعدادات النظام")
 
-# محاكاة شبكة سيرفرات الشركة
-@st.cache_data(ttl=5)
-def load_company_servers():
-    servers = [
-        {"name": "App-Server-01", "role": "Application Node"},
-        {"name": "DB-Server-Primary", "role": "Database Main"},
-        {"name": "Web-Proxy-01", "role": "Load Balancer"},
-        {"name": "Backup-Node-02", "role": "Storage & Backup"}
-    ]
+# أداة السحب للتحكم بزمن التحديث بالثواني
+refresh_rate = st.sidebar.slider(
+    "⏱️ معدل تحديث البيانات (بالثواني):",
+    min_value=2,
+    max_value=30,
+    value=5,
+    step=1
+)
 
-    data = []
-    np.random.seed(int(time.time()))
+st.sidebar.markdown("---")
+st.sidebar.header("🛠️ إجراءات التعافي الذاتي (Auto-Healing)")
+selected_server = st.sidebar.selectbox("اختر السيرفر للإصلاح:", ["Server-01", "Server-02", "Server-03", "Server-04"])
 
-    for s in servers:
-        cpu = round(np.random.uniform(20, 95), 1)
-        ram = round(np.random.uniform(35, 90), 1)
-        disk = round(np.random.uniform(45, 80), 1)
-        latency = round(np.random.uniform(2, 40), 1)
-        status = "Critical" if cpu > 85 else ("Warning" if cpu > 70 else "Healthy")
+if st.sidebar.button("🧹 تفريغ الذاكرة (Clear Cache)"):
+    result = trigger_auto_healing(selected_server, "clear_cache")
+    st.sidebar.success(result)
 
-        data.append({
-            "اسم السيرفر": s["name"],
-            "الوظيفة": s["role"],
-            "الحالة": status,
-            "استهلاك CPU (%)": cpu,
-            "استهلاك RAM (%)": ram,
-            "استهلاك التخزين (%)": disk,
-            "زمن الاستجابة (ms)": latency,
-            "آخر تحديث": datetime.now().strftime("%H:%M:%S")
-        })
-    return pd.DataFrame(data)
+if st.sidebar.button("🔄 إعادة تشغيل السيرفر (Restart)"):
+    result = trigger_auto_healing(selected_server, "restart")
+    st.sidebar.warning(result)
 
+# 3. جلب بيانات السيرفرات الأربعة من المحاكي agent.py
+servers_data = generate_server_metrics()
 
-df = load_company_servers()
+# 4. ملخص مؤشرات الأداء العليا (Top-level Metrics)
+col1, col2, col3, col4 = st.columns(4)
+avg_cpu = sum(s['cpu'] for s in servers_data) / len(servers_data)
+avg_ram = sum(s['ram'] for s in servers_data) / len(servers_data)
+unhealthy_count = sum(1 for s in servers_data if s['status'] != 'Healthy')
 
-# الشريط الجانبي للفلترة
-st.sidebar.header("⚙️ لوحة التصفية")
-selected_server = st.sidebar.selectbox("اختر السيرفر للمعاينة:", ["جميع السيرفرات"] + list(df["اسم السيرفر"]))
+col1.metric("إجمالي السيرفرات", f"{len(servers_data)} Nodes")
+col2.metric("متوسط الـ CPU", f"{avg_cpu:.1f}%")
+col3.metric("متوسط الـ RAM", f"{avg_ram:.1f}%")
+col4.metric("السيرفرات الحرجة", f"{unhealthy_count} Alert", delta_color="inverse")
 
-if st.sidebar.button("🔄 تحديث البيانات"):
-    st.cache_data.clear()
-    st.rerun()
+st.markdown("---")
 
-# الإحصائيات العامة
-total_nodes = len(df)
-healthy_nodes = len(df[df["الحالة"] == "Healthy"])
-critical_nodes = len(df[df["الحالة"] == "Critical"])
+# 5. عرض كروت السيرفرات التفصيلية
+st.subheader("📊 حالة الخوادم الحالية")
+cols = st.columns(4)
 
-c1, c2, c3, c4 = st.columns(4)
-c1.metric("إجمالي السيرفرات", total_nodes)
-c2.metric("السيرفرات السليمة", f"{healthy_nodes} / {total_nodes}")
-c3.metric("سيرفرات تحت الضغط", critical_nodes, delta_color="inverse")
-c4.metric("متوسط استهلاك الشبكة CPU", f"{df['استهلاك CPU (%)'].mean():.1f}%")
+for idx, server in enumerate(servers_data):
+    with cols[idx]:
+        st.markdown(f"### {server['name']}")
+        st.caption(f"الوظيفة: {server['role']}")
+        
+        # لون الحالة
+        if server['status'] == 'Healthy':
+            st.success(f"الحالة: {server['status']}")
+        elif server['status'] == 'Warning':
+            st.warning(f"الحالة: {server['status']}")
+        else:
+            st.error(f"الحالة: {server['status']}")
+            
+        st.write(f"CPU استهلاك: {server['cpu']:.1f}%")
+        st.progress(int(server['cpu']))
+        
+        st.write(f"RAM استهلاك: {server['ram']:.1f}%")
+        st.progress(int(server['ram']))
+        
+        st.write(f"سرعة الاستجابة: {server['response_time']:.1f} ms")
 
-st.divider()
+st.markdown("---")
 
-if selected_server == "جميع السيرفرات":
-    st.subheader("📊 عرض المقارنة الجماعي لسيرفرات الشركة")
-    st.dataframe(df, use_container_width=True)
+# 6. الرسم البياني للمقارنة اللحظية
+st.subheader("📈 مقارنة أداء السيرفرات")
+df = pd.DataFrame(servers_data)
+fig = px.bar(
+    df,
+    x='name',
+    y=['cpu', 'ram'],
+    barmode='group',
+    title="نسب الاستهلاك الحية (CPU vs RAM)",
+    labels={'value': 'النسبة المئوية %', 'name': 'السيرفر', 'variable': 'المورد'}
+)
+st.plotly_chart(fig, use_container_width=True)
 
-    col_g1, col_g2 = st.columns(2)
-    with col_g1:
-        fig_cpu = px.bar(df, x="اسم السيرفر", y="استهلاك CPU (%)", color="الحالة",
-                         title="مقارنة ضغط المعالج (CPU) لكل سيرفر",
-                         color_discrete_map={"Healthy": "green", "Warning": "orange", "Critical": "red"})
-        st.plotly_chart(fig_cpu, use_container_width=True)
-
-    with col_g2:
-        fig_ram = px.bar(df, x="اسم السيرفر", y="استهلاك RAM (%)", color="اسم السيرفر",
-                         title="مقارنة الذاكرة (RAM)")
-        st.plotly_chart(fig_ram, use_container_width=True)
-else:
-    st.subheader(f"🔍 تفاصيل السيرفر: {selected_server}")
-    s_data = df[df["اسم السيرفر"] == selected_server].iloc[0]
-
-    sc1, sc2, sc3, sc4 = st.columns(4)
-    sc1.metric("الوظيفة", s_data["الوظيفة"])
-    sc2.metric("الحالة الحالية", s_data["الحالة"])
-    sc3.metric("استهلاك CPU", f"{s_data['استهلاك CPU (%)']}%")
-    sc4.metric("سرعة الاستجابة", f"{s_data['زمن الاستجابة (ms)']} ms")
-
-    fig_gauge = go.Figure(go.Indicator(
-        mode="gauge+number",
-        value=s_data['استهلاك CPU (%)'],
-        title={'text': f"مؤشر الضغط الحالي لـ {selected_server}"},
-        gauge={
-            'axis': {'range': [None, 100]},
-            'bar': {'color': "red" if s_data['استهلاك CPU (%)'] > 80 else "green"},
-            'threshold': {'line': {'color': "black", 'width': 4}, 'value': 85}
-        }
-    ))
-    st.plotly_chart(fig_gauge, use_container_width=True)
-
-# زر التقرير
-csv = df.to_csv(index=False).encode('utf-8')
-st.sidebar.download_button("📥 تنزيل تقرير السيرفرات (CSV)", csv, "servers_status.csv", "text/csv")
+# 7. التحديث التلقائي بناءً على الثواني المحددة في الـ Slider
+time.sleep(refresh_rate)
+st.rerun()
