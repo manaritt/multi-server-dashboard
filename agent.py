@@ -25,5 +25,5 @@ def trigger_auto_healing(server_name, action):
         return f"تم إرسال أمر إعادة التشغيل لـ {server_name}."
     return "إجراء غير معروف."
 
-if name == "main":
+if __name__ == "__main__":
     print(generate_server_metrics())
