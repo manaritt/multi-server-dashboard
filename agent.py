@@ -1,23 +1,29 @@
-import psutil
-import requests
-import time
-from datetime import datetime
+import random
 
-# اسم السيرفر الحالي الذي يعمل عليه هذا السكريبت
-SERVER_NAME = "Server-Local-Node"
+def generate_server_metrics():
+    servers = [
+        {"name": "Server-01", "role": "Database Node", "cpu": random.uniform(30, 95), "ram": random.uniform(40, 90), "response_time": random.uniform(10, 50)},
+        {"name": "Server-02", "role": "Web Server", "cpu": random.uniform(20, 85), "ram": random.uniform(30, 80), "response_time": random.uniform(8, 35)},
+        {"name": "Server-03", "role": "Application Node", "cpu": random.uniform(40, 98), "ram": random.uniform(50, 95), "response_time": random.uniform(15, 80)},
+        {"name": "Server-04", "role": "Backup Node", "cpu": random.uniform(10, 60), "ram": random.uniform(20, 70), "response_time": random.uniform(5, 25)},
+    ]
+    
+    for server in servers:
+        if server["cpu"] > 85 or server["ram"] > 85:
+            server["status"] = "Critical"
+        elif server["cpu"] > 70 or server["ram"] > 70:
+            server["status"] = "Warning"
+        else:
+            server["status"] = "Healthy"
+            
+    return servers
 
-def get_system_metrics():
-    """قراءة موارد السيرفر الحالية"""
-    return {
-        "server_name": SERVER_NAME,
-        "cpu_usage": psutil.cpu_percent(interval=1),
-        "ram_usage": psutil.virtual_memory().percent,
-        "disk_usage": psutil.disk_usage('/').percent,
-        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    }
+def trigger_auto_healing(server_name, action):
+    if action == "clear_cache":
+        return f"تم تنظيف الذاكرة المؤقتة لـ {server_name} بنجاح!"
+    elif action == "restart":
+        return f"تم إرسال أمر إعادة التشغيل لـ {server_name}."
+    return "إجراء غير معروف."
 
 if name == "main":
-    print(f"🚀 بدء مراقبة السيرفر: {SERVER_NAME}...")
-    # يقرأ الموارد كل 5 ثوانٍ
-    metrics = get_system_metrics()
-    print("القراءات الحالية للسيرفر:", metrics)
+    print(generate_server_metrics())
